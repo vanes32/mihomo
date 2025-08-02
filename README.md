@@ -1,4 +1,2 @@
-# mihomo контейнеры
-
-- [stupid_tun](./stupid_tun/README.md)
-- [mihomo](./mihomo/README.md)
+# mihomo контейнеры для RouterOS
+Примеры использования в Wiki
