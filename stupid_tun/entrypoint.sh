@@ -149,6 +149,12 @@ fi
 
 cat >> /root/.config/mihomo/config.yaml <<EOF
 
+  - name: quic
+    type: select
+    proxies:
+      - PASS
+      - REJECT
+
 listeners:
   - name: tun-in
     type: tun
@@ -165,6 +171,7 @@ listeners:
     udp: true
 
 rules:
+  - AND,((NETWORK,udp),(DST-PORT,443)),quic
   - MATCH,GLOBAL
 EOF
 }
