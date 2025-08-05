@@ -81,7 +81,6 @@ ipv6: false
 dns:
   enable: true
   use-system-hosts: true
-mode: global
 
 proxy-providers:
   links:
