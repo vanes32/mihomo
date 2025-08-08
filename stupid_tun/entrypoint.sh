@@ -78,9 +78,42 @@ external-ui: ui
 external-ui-url: "${EXTERNAL_UI_URL:-https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip}"
 unified-delay: true
 ipv6: false
+EOF
+
+if [ -n "$FAKEIP" ]; then
+cat >> /root/.config/mihomo/config.yaml <<EOF
 dns:
   enable: true
-  use-system-hosts: true
+  cache-algorithm: arc
+  prefer-h3: false
+  use-system-hosts: false
+  respect-rules: false
+  listen: 0.0.0.0:53
+  ipv6: false
+  default-nameserver:
+    - 8.8.8.8
+    - 9.9.9.9
+    - 1.1.1.1
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.0/15
+  nameserver:
+    - https://dns.google/dns-query
+    - https://1.1.1.1/dns-query
+    - https://dns.quad9.net/dns-query
+
+hosts:
+  dns.google: [8.8.8.8, 8.8.4.4]
+  dns.quad9.net: [9.9.9.9, 149.112.112.112]
+EOF
+else
+cat >> /root/.config/mihomo/config.yaml <<EOF
+dns:
+  enable: true
+  use-system-hosts: false
+EOF
+fi
+
+cat >> /root/.config/mihomo/config.yaml <<EOF
 
 proxy-providers:
   links:
