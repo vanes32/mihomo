@@ -161,23 +161,17 @@ cat >> /root/.config/mihomo/config.yaml <<EOF
 
 proxy-groups:
   - name: GLOBAL
-    type: ${GROUP_TYPE:-select}
+    type: select
     use:
 EOF
 
-if [ -n "$PROXY_ORDER" ]; then
-  echo "$PROXY_ORDER" | tr ',' '\n' | while read -r item; do
-    echo "      - $item" >> /root/.config/mihomo/config.yaml
-  done
-else
-  echo "      - links" >> /root/.config/mihomo/config.yaml
-  echo "      - awg" >> /root/.config/mihomo/config.yaml
-  i=1
-  env | grep -E '^SUB_LINK[0-9]*=' | sort -t '=' -k1 | while read -r _; do
-    echo "      - sub_link$i" >> /root/.config/mihomo/config.yaml
-    i=$((i + 1))
-  done
-fi
+echo "      - links" >> /root/.config/mihomo/config.yaml
+echo "      - awg" >> /root/.config/mihomo/config.yaml
+i=1
+env | grep -E '^SUB_LINK[0-9]*=' | sort -t '=' -k1 | while read -r _; do
+  echo "      - sub_link$i" >> /root/.config/mihomo/config.yaml
+  i=$((i + 1))
+done
 
 # Добавляем несколько групп, если они заданы
 if [ -n "$GROUP" ]; then
