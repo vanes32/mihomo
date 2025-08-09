@@ -71,6 +71,7 @@ generate_awg_yaml() {
 }
 
 config_file_mihomo() {
+  local providers=""
 cat > /root/.config/mihomo/config.yaml <<EOF
 log-level: ${LOG_LEVEL:-warning}
 external-controller: 0.0.0.0:9090
@@ -116,6 +117,11 @@ listeners:
     udp: true
 
 proxy-providers:
+EOF
+
+# links provider
+if env | grep -qE '^LINK[0-9]*='; then
+cat >> /root/.config/mihomo/config.yaml <<EOF
   links:
     type: file
     path: links.yaml
@@ -126,6 +132,13 @@ proxy-providers:
       timeout: 5000
       lazy: false
       expected-status: 204
+EOF
+  providers="$providers links"
+fi
+
+# awg provider
+if find /root/.config/mihomo/awg -name "*.conf" | grep -q .; then
+cat >> /root/.config/mihomo/config.yaml <<EOF
   awg:
     type: file
     path: awg.yaml
@@ -137,10 +150,13 @@ proxy-providers:
       lazy: false
       expected-status: 204
 EOF
+  providers="$providers awg"
+fi
 
+# sub_link providers
 i=1
-env | grep -E '^SUB_LINK[0-9]*=' | sort -t '=' -k1 | while read -r line; do
-  value=$(echo "$line" | cut -d '=' -f2-)
+for var in $(env | grep -E '^SUB_LINK[0-9]*=' | sort -t '=' -k1); do
+  value=$(echo "$var" | cut -d '=' -f2-)
   subname="sub_link$i"
   cat >> /root/.config/mihomo/config.yaml <<EOF
   $subname:
@@ -154,6 +170,7 @@ env | grep -E '^SUB_LINK[0-9]*=' | sort -t '=' -k1 | while read -r line; do
       interval: ${INTERVAL:-120}
       lazy: false
 EOF
+  providers="$providers $subname"
   i=$((i + 1))
 done
 
@@ -161,35 +178,26 @@ cat >> /root/.config/mihomo/config.yaml <<EOF
 
 proxy-groups:
   - name: GLOBAL
-    type: select
+    type: ${GROUP_TYPE:-select}
     use:
 EOF
 
-echo "      - links" >> /root/.config/mihomo/config.yaml
-echo "      - awg" >> /root/.config/mihomo/config.yaml
-i=1
-env | grep -E '^SUB_LINK[0-9]*=' | sort -t '=' -k1 | while read -r _; do
-  echo "      - sub_link$i" >> /root/.config/mihomo/config.yaml
-  i=$((i + 1))
+for p in $providers; do
+  echo "      - $p" >> /root/.config/mihomo/config.yaml
 done
 
-# Добавляем несколько групп, если они заданы
 if [ -n "$GROUP" ]; then
   echo "$GROUP" | tr ',' '\n' | while read -r grp; do
-    grp_trim=$(echo "$grp" | xargs) # убираем пробелы
+    grp_trim=$(echo "$grp" | xargs)
     [ -z "$grp_trim" ] && continue
     cat >> /root/.config/mihomo/config.yaml <<EOF
 
   - name: $grp_trim
     type: select
     use:
-      - links
-      - awg
 EOF
-    i=1
-    env | grep -E '^SUB_LINK[0-9]*=' | sort -t '=' -k1 | while read -r _; do
-      echo "      - sub_link$i" >> /root/.config/mihomo/config.yaml
-      i=$((i + 1))
+    for p in $providers; do
+      echo "      - $p" >> /root/.config/mihomo/config.yaml
     done
   done
 fi
@@ -206,7 +214,6 @@ rules:
   - AND,((NETWORK,udp),(DST-PORT,443)),quic
 EOF
 
-# Добавляем правила для каждой группы
 if [ -n "$GROUP" ]; then
   echo "$GROUP" | tr ',' '\n' | while read -r grp; do
     grp_trim=$(echo "$grp" | xargs)
@@ -221,11 +228,10 @@ EOF
 }
 
 link_file_mihomo() {
-  [ -z "$LINK1" ] && [ -z "$SUB_LINK1" ] && ! find /root/.config/mihomo/awg -name "*.conf" | grep -q . && {
-    echo "No LINK1, SUB_LINK1, or .conf file found."
+  if ! env | grep -qE '^LINK[0-9]*=' && ! env | grep -qE '^SUB_LINK[0-9]*=' && ! find /root/.config/mihomo/awg -name "*.conf" | grep -q .; then
+    echo "No LINK, SUB_LINK, or .conf file found."
     exit 1
-  }
-
+  fi
   > /root/.config/mihomo/links.yaml
   for i in $(env | grep -E '^LINK[0-9]*=' | sort -t '=' -k1 | cut -d '=' -f1); do
     eval "echo \"\$$i\"" >> /root/.config/mihomo/links.yaml
