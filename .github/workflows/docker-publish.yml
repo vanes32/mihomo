@@ -26,15 +26,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push stupid_tun (multi-arch)
-        uses: docker/build-push-action@v4
-        with:
-          context: ./stupid_tun
-          file: ./stupid_tun/Dockerfile
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
-          push: true
-          tags: ghcr.io/vanes32/mihomo/stupid_tun:latest
-
       - name: Build and push mihomo (multi-arch)
         uses: docker/build-push-action@v4
         with:
