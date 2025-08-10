@@ -19,6 +19,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # --- Login to GHCR ---
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -26,20 +27,45 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push mihomo (multi-arch)
+      # --- Login to Docker Hub ---
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # --- Build mihomo ---
+      - name: Read version for mihomo
+        id: mihomo_version
+        run: echo "VERSION=$(cat ./mihomo/VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Build and push mihomo
         uses: docker/build-push-action@v4
         with:
           context: ./mihomo
           file: ./mihomo/Dockerfile
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
-          tags: ghcr.io/vanes32/mihomo/mihomo:latest
+          tags: |
+            ghcr.io/vanes32/mihomo/mihomo:latest
+            ghcr.io/vanes32/mihomo/mihomo:${{ steps.mihomo_version.outputs.VERSION }}
+            vanes32/mihomo:latest
+            vanes32/mihomo:${{ steps.mihomo_version.outputs.VERSION }}
 
-      - name: Build and push mihomo_env (multi-arch)
+      # --- Build mihomo_env ---
+      - name: Read version for mihomo_env
+        id: mihomo_env_version
+        run: echo "VERSION=$(cat ./mihomo_env/VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Build and push mihomo_env
         uses: docker/build-push-action@v4
         with:
           context: ./mihomo_env
           file: ./mihomo_env/Dockerfile
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
-          tags: ghcr.io/vanes32/mihomo/mihomo_env:latest
+          tags: |
+            ghcr.io/vanes32/mihomo/mihomo_env:latest
+            ghcr.io/vanes32/mihomo/mihomo_env:${{ steps.mihomo_env_version.outputs.VERSION }}
+            vanes32/mihomo_env:latest
+            vanes32/mihomo_env:${{ steps.mihomo_env_version.outputs.VERSION }}
