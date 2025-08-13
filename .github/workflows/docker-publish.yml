@@ -69,3 +69,21 @@ jobs:
             ghcr.io/vanes32/mihomo/mihomo_env:${{ steps.mihomo_env_version.outputs.VERSION }}
             vanes32/mihomo_env:latest
             vanes32/mihomo_env:${{ steps.mihomo_env_version.outputs.VERSION }}
+
+      # --- Cleanup old versions for mihomo ---
+      - name: Cleanup old GHCR versions (mihomo)
+        uses: actions/delete-package-versions@v4
+        with:
+          package-name: 'mihomo/mihomo'
+          package-type: 'container'
+          min-versions-to-keep: 5
+          token: ${{ secrets.PACKAGE_TOKEN }}
+
+      # --- Cleanup old versions for mihomo_env ---
+      - name: Cleanup old GHCR versions (mihomo_env)
+        uses: actions/delete-package-versions@v4
+        with:
+          package-name: 'mihomo/mihomo_env'
+          package-type: 'container'
+          min-versions-to-keep: 5
+          token: ${{ secrets.PACKAGE_TOKEN }}
