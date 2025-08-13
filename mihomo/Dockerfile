@@ -20,7 +20,7 @@ RUN mkdir /out && \
 FROM alpine:3.18
 
 # Установка минимальных пакетов
-RUN apk add --no-cache iptables ca-certificates
+RUN apk add --no-cache iptables
 
 # Установка переменной окружения
 ENV DISABLE_NFTABLES=1

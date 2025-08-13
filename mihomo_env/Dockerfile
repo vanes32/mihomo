@@ -17,10 +17,9 @@ RUN mkdir /out && \
 # Минимальный финальный образ
 FROM alpine:3.18
 # Установка минимальных пакетов
-RUN apk add --no-cache iptables ca-certificates
+RUN apk add --no-cache iptables
 # Установка переменной окружения
 ENV DISABLE_NFTABLES=1
-# ENV FAKE_IP_RANGE=10.200.0.0/15
 # Копируем бинарник и скрипт
 COPY --from=downloader /out/mihomo /mihomo
 COPY entrypoint.sh /entrypoint.sh
