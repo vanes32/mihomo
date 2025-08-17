@@ -17,7 +17,7 @@ RUN mkdir /out && \
 # Минимальный финальный образ
 FROM alpine:3.18
 # Установка минимальных пакетов
-RUN apk add --no-cache iptables
+RUN apk add --no-cache iptables ca-certificates
 # Установка переменной окружения
 ENV DISABLE_NFTABLES=1
 # Копируем бинарник и скрипт
