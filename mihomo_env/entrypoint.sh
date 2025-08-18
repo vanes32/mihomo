@@ -287,8 +287,8 @@ cat >> /root/.config/mihomo/config.yaml <<EOF
   - name: quic
     type: select
     proxies:
-      - PASS
       - REJECT
+      - PASS
 
 rules:
   - AND,((NETWORK,udp),(DST-PORT,443)),quic
