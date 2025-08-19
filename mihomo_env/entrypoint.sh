@@ -70,36 +70,27 @@ generate_awg_yaml() {
   done >> "$output_file"
 }
 
-# --- helpers for env mapping ---
-# returns sanitized (ENV-safe) prefix for a group name
-sanitize_prefix() {
-  # upper-case, replace any char not A-Z0-9_ with _
-  echo "$1" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9_]/_/g'
-}
-
-# get_env_val <groupName> <SUFFIX>  -> echoes value if found
-get_env_val() {
-  # try several candidates to be tolerant
-  local raw="$1"
-  local suf="$2"
-  local up="$(echo "$raw" | tr '[:lower:]' '[:upper:]')"
-  local low="$(echo "$raw" | tr '[:upper:]' '[:lower:]')"
-  local up_san="$(echo "$up" | sed 's/[^A-Z0-9_]/_/g')"
-  local low_san="$(echo "$low" | sed 's/[^a-z0-9_]/_/g')"
-
-  # candidate names (note: names with '-' are not valid env vars, but harmless to probe)
-  for name in "${up}_${suf}" "${up_san}_${suf}" "${low}_${suf}" "${low_san}_${suf}"; do
-    val="$(printenv "$name")"
-    if [ -n "$val" ]; then
-      printf "%s" "$val"
-      return 0
-    fi
+proxies_file_mihomo() {
+  local output_file="/root/.config/mihomo/proxies.yaml"
+  echo "proxies:" > "$output_file"
+  for var in $(env | grep -E '^[A-Za-z0-9_-]+_OUT=' | sort -t '=' -k1); do
+    name=$(echo "$var" | cut -d '=' -f1 | sed 's/_OUT$//')
+    value=$(echo "$var" | cut -d '=' -f2-)
+    server=$(echo "$value" | cut -d ',' -f1)
+    port=$(echo "$value" | cut -d ',' -f2)
+    cat >> "$output_file" <<EOF
+  - name: "$name"
+    type: socks5
+    server: $server
+    port: $port
+    udp: true
+EOF
   done
-  return 1
 }
 
 config_file_mihomo() {
   local providers=""
+
 cat > /root/.config/mihomo/config.yaml <<EOF
 log-level: ${LOG_LEVEL:-warning}
 external-controller: 0.0.0.0:9090
@@ -107,6 +98,7 @@ external-ui: ui
 external-ui-url: "${EXTERNAL_UI_URL:-https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip}"
 unified-delay: true
 ipv6: false
+geodata-mode: true 
 dns:
   enable: true
   cache-algorithm: arc
@@ -202,79 +194,65 @@ EOF
   i=$((i + 1))
 done
 
-# --- GLOBAL group with overrides ---
+# proxies provider (_OUT)
+if env | grep -qE '^[A-Za-z0-9_-]+_OUT='; then
+cat >> /root/.config/mihomo/config.yaml <<EOF
+  proxies:
+    type: file
+    path: proxies.yaml
+    health-check:
+      enable: true
+      url: https://www.gstatic.com/generate_204
+      interval: ${INTERVAL:-120}
+      timeout: 5000
+      lazy: false
+      expected-status: 204
+EOF
+  providers="$providers proxies"
+fi
+
 cat >> /root/.config/mihomo/config.yaml <<EOF
 
 proxy-groups:
   - name: GLOBAL
+    type: ${GLOBAL_TYPE:-select}
+    use:
 EOF
 
-# GLOBAL type/filter/exclude/use via helper (fallback to GROUP_TYPE for type)
-g_type="$(get_env_val "GLOBAL" "TYPE")"
-if [ -n "$g_type" ]; then
-  echo "    type: $g_type" >> /root/.config/mihomo/config.yaml
+# GLOBAL group
+if [ -n "$GLOBAL_USE" ]; then
+  echo "$GLOBAL_USE" | tr ',' '\n' | sed 's/^/      - /' >> /root/.config/mihomo/config.yaml
 else
-  echo "    type: ${GROUP_TYPE:-select}" >> /root/.config/mihomo/config.yaml
-fi
-
-g_filter="$(get_env_val "GLOBAL" "FILTER")"
-[ -n "$g_filter" ] && echo "    filter: \"$g_filter\"" >> /root/.config/mihomo/config.yaml
-
-g_exclude="$(get_env_val "GLOBAL" "EXCLUDE")"
-[ -n "$g_exclude" ] && echo "    exclude-filter: \"$g_exclude\"" >> /root/.config/mihomo/config.yaml
-
-g_use="$(get_env_val "GLOBAL" "USE")"
-if [ -n "$g_use" ]; then
-  echo "    use:" >> /root/.config/mihomo/config.yaml
-  echo "$g_use" | tr ',' '\n' | while read -r prov; do
-    prov_trim="$(echo "$prov" | xargs)"
-    [ -n "$prov_trim" ] && echo "      - $prov_trim" >> /root/.config/mihomo/config.yaml
-  done
-else
-  echo "    use:" >> /root/.config/mihomo/config.yaml
   for p in $providers; do
     echo "      - $p" >> /root/.config/mihomo/config.yaml
   done
 fi
-# --- end GLOBAL ---
+[ -n "$GLOBAL_FILTER" ] && echo "    filter: $GLOBAL_FILTER" >> /root/.config/mihomo/config.yaml
+[ -n "$GLOBAL_EXCLUDE" ] && echo "    exclude-filter: $GLOBAL_EXCLUDE" >> /root/.config/mihomo/config.yaml
 
-# Other custom groups from $GROUP
+# other groups
 if [ -n "$GROUP" ]; then
   echo "$GROUP" | tr ',' '\n' | while read -r grp; do
-    grp_trim="$(echo "$grp" | xargs)"
+    grp_trim=$(echo "$grp" | xargs)
     [ -z "$grp_trim" ] && continue
+    grp_env_name=$(echo "$grp_trim" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
+    grp_type=$(eval echo "\$${grp_env_name}_TYPE")
+    grp_filter=$(eval echo "\$${grp_env_name}_FILTER")
+    grp_exclude=$(eval echo "\$${grp_env_name}_EXCLUDE")
+    grp_use=$(eval echo "\$${grp_env_name}_USE")
 
     cat >> /root/.config/mihomo/config.yaml <<EOF
 
   - name: $grp_trim
+    type: ${grp_type:-select}
 EOF
+    [ -n "$grp_filter" ] && echo "    filter: $grp_filter" >> /root/.config/mihomo/config.yaml
+    [ -n "$grp_exclude" ] && echo "    exclude-filter: $grp_exclude" >> /root/.config/mihomo/config.yaml
 
-    # TYPE (default select)
-    t_val="$(get_env_val "$grp_trim" "TYPE")"
-    if [ -n "$t_val" ]; then
-      echo "    type: $t_val" >> /root/.config/mihomo/config.yaml
+    echo "    use:" >> /root/.config/mihomo/config.yaml
+    if [ -n "$grp_use" ]; then
+      echo "$grp_use" | tr ',' '\n' | sed 's/^/      - /' >> /root/.config/mihomo/config.yaml
     else
-      echo "    type: select" >> /root/.config/mihomo/config.yaml
-    fi
-
-    # FILTER
-    f_val="$(get_env_val "$grp_trim" "FILTER")"
-    [ -n "$f_val" ] && echo "    filter: \"$f_val\"" >> /root/.config/mihomo/config.yaml
-
-    # EXCLUDE
-    e_val="$(get_env_val "$grp_trim" "EXCLUDE")"
-    [ -n "$e_val" ] && echo "    exclude-filter: \"$e_val\"" >> /root/.config/mihomo/config.yaml
-
-    # USE
-    u_val="$(get_env_val "$grp_trim" "USE")"
-    if [ -n "$u_val" ]; then
-      echo "    use:" >> /root/.config/mihomo/config.yaml
-      echo "$u_val" | tr ',' '\n' | while read -r prov; do
-        prov_trim="$(echo "$prov" | xargs)"
-        [ -n "$prov_trim" ] && echo "      - $prov_trim" >> /root/.config/mihomo/config.yaml
-      done
-    else
-      echo "    use:" >> /root/.config/mihomo/config.yaml
       for p in $providers; do
         echo "      - $p" >> /root/.config/mihomo/config.yaml
       done
@@ -296,9 +274,16 @@ EOF
 
 if [ -n "$GROUP" ]; then
   echo "$GROUP" | tr ',' '\n' | while read -r grp; do
-    grp_trim="$(echo "$grp" | xargs)"
+    grp_trim=$(echo "$grp" | xargs)
     [ -z "$grp_trim" ] && continue
+    # GEOSITE правило
     echo "  - GEOSITE,$grp_trim,$grp_trim" >> /root/.config/mihomo/config.yaml
+    # GEOIP правило (если определено <GROUPNAME>_GEOIP)
+    grp_env_name=$(echo "$grp_trim" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
+    geoip_val=$(eval echo "\$${grp_env_name}_GEOIP")
+    if [ -n "$geoip_val" ]; then
+      echo "  - GEOIP,$geoip_val,$grp_trim" >> /root/.config/mihomo/config.yaml
+    fi
   done
 fi
 
@@ -308,8 +293,8 @@ EOF
 }
 
 link_file_mihomo() {
-  if ! env | grep -qE '^LINK[0-9]*=' && ! env | grep -qE '^SUB_LINK[0-9]*=' && ! find /root/.config/mihomo/awg -name "*.conf" | grep -q .; then
-    echo "No LINK, SUB_LINK, or .conf file found."
+  if ! env | grep -qE '^LINK[0-9]*=' && ! env | grep -qE '^SUB_LINK[0-9]*=' && ! find /root/.config/mihomo/awg -name "*.conf" | grep -q . && ! env | grep -qE '^[A-Za-z0-9_-]+_OUT='; then
+    echo "No LINK, SUB_LINK, .conf or *_OUT file found."
     exit 1
   fi
   > /root/.config/mihomo/links.yaml
@@ -320,10 +305,11 @@ link_file_mihomo() {
 
 run() {
   mkdir -p /root/.config/mihomo
-  config_file_mihomo
   generate_awg_yaml
+  proxies_file_mihomo
   link_file_mihomo
-  ./mihomo
+  config_file_mihomo
+  exec ./mihomo
 }
 
 run || exit 1
