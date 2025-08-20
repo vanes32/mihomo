@@ -125,7 +125,9 @@ listeners:
   - name: tun-in
     type: tun
     stack: system
-    auto-detect-interface: true
+    auto-detect-interface: false
+    include-interface:
+    - $(ip -o link show | awk -F': ' '/link\/ether/ {print $2}' | cut -d'@' -f1 | head -n1)
     auto-route: true
     auto-redirect: true
     inet4-address:
@@ -265,7 +267,7 @@ cat >> /root/.config/mihomo/config.yaml <<EOF
   - name: quic
     type: select
     proxies:
-      - REJECT
+      - REJECT-DROP
       - PASS
 
 rules:
