@@ -1,39 +1,73 @@
 #!/bin/sh
+set -eu
 
-get_awg_template() {
-cat << 'EOF'
-# шаблон WireGuard
+CONFIG_DIR="/root/.config/mihomo"
+AWG_DIR="$CONFIG_DIR/awg"
+AWG_YAML="$CONFIG_DIR/awg.yaml"
+LINKS_YAML="$CONFIG_DIR/links.yaml"
+CONFIG_YAML="$CONFIG_DIR/config.yaml"
+
+log() { echo "[$(date +'%H:%M:%S')] $*"; }
+
+health_check_block() {
+  cat <<EOF
+    health-check:
+      enable: true
+      url: https://www.gstatic.com/generate_204
+      interval: ${INTERVAL:-120}
+      timeout: 5000
+      lazy: false
+      expected-status: 204
 EOF
 }
+
+first_iface() {
+  ip -o link show | awk -F': ' '/link\/ether/ {print $2}' | cut -d'@' -f1 | head -n1
+}
+
+# ------------------- AWG -------------------
 
 parse_awg_config() {
   local config_file="$1"
   local awg_name
   awg_name=$(basename "$config_file" .conf)
 
-  local private_key=$(grep "^PrivateKey" "$config_file" | sed 's/^PrivateKey[[:space:]]*=[[:space:]]*//')
-  local address=$(grep "^Address" "$config_file" | sed 's/^Address[[:space:]]*=[[:space:]]*//')
-  address=$(echo "$address" | tr ',' '\n' | grep -v ':')
-  local dns=$(grep "^DNS" "$config_file" | sed 's/^DNS[[:space:]]*=[[:space:]]*//')
+  # базовые поля
+  local private_key=$(grep -E "^PrivateKey" "$config_file" | sed 's/^PrivateKey[[:space:]]*=[[:space:]]*//')
+  local address=$(grep -E "^Address" "$config_file" | sed 's/^Address[[:space:]]*=[[:space:]]*//')
+  # первый IPv4 адрес
+  address=$(echo "$address" | tr ',' '\n' | grep -v ':' | head -n1)
+  local dns=$(grep -E "^DNS" "$config_file" | sed 's/^DNS[[:space:]]*=[[:space:]]*//')
   dns=$(echo "$dns" | tr ',' '\n' | grep -v ':' | sed 's/^ *//;s/ *$//' | paste -sd, -)
-  local mtu=$(grep "^MTU" "$config_file" | sed 's/^MTU[[:space:]]*=[[:space:]]*//')
+  local mtu=$(grep -E "^MTU" "$config_file" | sed 's/^MTU[[:space:]]*=[[:space:]]*//')
 
-  local jc=$(grep "^Jc" "$config_file" | sed 's/^Jc[[:space:]]*=[[:space:]]*//')
-  local jmin=$(grep "^Jmin" "$config_file" | sed 's/^Jmin[[:space:]]*=[[:space:]]*//')
-  local jmax=$(grep "^Jmax" "$config_file" | sed 's/^Jmax[[:space:]]*=[[:space:]]*//')
-  local s1=$(grep "^S1" "$config_file" | sed 's/^S1[[:space:]]*=[[:space:]]*//')
-  local s2=$(grep "^S2" "$config_file" | sed 's/^S2[[:space:]]*=[[:space:]]*//')
-  local h1=$(grep "^H1" "$config_file" | sed 's/^H1[[:space:]]*=[[:space:]]*//')
-  local h2=$(grep "^H2" "$config_file" | sed 's/^H2[[:space:]]*=[[:space:]]*//')
-  local h3=$(grep "^H3" "$config_file" | sed 's/^H3[[:space:]]*=[[:space:]]*//')
-  local h4=$(grep "^H4" "$config_file" | sed 's/^H4[[:space:]]*=[[:space:]]*//')
+  # старые awg-опции
+  local jc=$(grep -E "^Jc" "$config_file" | sed 's/^Jc[[:space:]]*=[[:space:]]*//')
+  local jmin=$(grep -E "^Jmin" "$config_file" | sed 's/^Jmin[[:space:]]*=[[:space:]]*//')
+  local jmax=$(grep -E "^Jmax" "$config_file" | sed 's/^Jmax[[:space:]]*=[[:space:]]*//')
+  local s1=$(grep -E "^S1" "$config_file" | sed 's/^S1[[:space:]]*=[[:space:]]*//')
+  local s2=$(grep -E "^S2" "$config_file" | sed 's/^S2[[:space:]]*=[[:space:]]*//')
+  local h1=$(grep -E "^H1" "$config_file" | sed 's/^H1[[:space:]]*=[[:space:]]*//')
+  local h2=$(grep -E "^H2" "$config_file" | sed 's/^H2[[:space:]]*=[[:space:]]*//')
+  local h3=$(grep -E "^H3" "$config_file" | sed 's/^H3[[:space:]]*=[[:space:]]*//')
+  local h4=$(grep -E "^H4" "$config_file" | sed 's/^H4[[:space:]]*=[[:space:]]*//')
 
-  local public_key=$(grep "^PublicKey" "$config_file" | sed 's/^PublicKey[[:space:]]*=[[:space:]]*//')
-  local psk=$(grep "^PresharedKey" "$config_file" | sed 's/^PresharedKey[[:space:]]*=[[:space:]]*//')
-  local endpoint=$(grep "^Endpoint" "$config_file" | sed 's/^Endpoint[[:space:]]*=[[:space:]]*//')
+  # новые awg 1.5
+  local i1=$(grep -E "^I1" "$config_file" | sed 's/^I1[[:space:]]*=[[:space:]]*//')
+  local i2=$(grep -E "^I2" "$config_file" | sed 's/^I2[[:space:]]*=[[:space:]]*//')
+  local i3=$(grep -E "^I3" "$config_file" | sed 's/^I3[[:space:]]*=[[:space:]]*//')
+  local i4=$(grep -E "^I4" "$config_file" | sed 's/^I4[[:space:]]*=[[:space:]]*//')
+  local i5=$(grep -E "^I5" "$config_file" | sed 's/^I5[[:space:]]*=[[:space:]]*//')
+  local j1=$(grep -E "^J1" "$config_file" | sed 's/^J1[[:space:]]*=[[:space:]]*//')
+  local j2=$(grep -E "^J2" "$config_file" | sed 's/^J2[[:space:]]*=[[:space:]]*//')
+  local j3=$(grep -E "^J3" "$config_file" | sed 's/^J3[[:space:]]*=[[:space:]]*//')
+  local itime=$(grep -E "^itime" "$config_file" | sed 's/^itime[[:space:]]*=[[:space:]]*//')
+
+  local public_key=$(grep -E "^PublicKey" "$config_file" | sed 's/^PublicKey[[:space:]]*=[[:space:]]*//')
+  local psk=$(grep -E "^PresharedKey" "$config_file" | sed 's/^PresharedKey[[:space:]]*=[[:space:]]*//')
+  local endpoint=$(grep -E "^Endpoint" "$config_file" | sed 's/^Endpoint[[:space:]]*=[[:space:]]*//')
   local server=$(echo "$endpoint" | cut -d':' -f1)
   local port=$(echo "$endpoint" | cut -d':' -f2)
-  local ip=$(echo "$address" | head -n 1)
 
   cat <<EOF
   - name: "$awg_name"
@@ -41,7 +75,7 @@ parse_awg_config() {
     private-key: $private_key
     server: $server
     port: $port
-    ip: $ip
+    ip: $address
     mtu: ${mtu:-1420}
     public-key: $public_key
     allowed-ips: ['0.0.0.0/0']
@@ -59,46 +93,53 @@ $(if [ -n "$psk" ]; then echo "    pre-shared-key: $psk"; fi)
       h2: ${h2:-2}
       h3: ${h3:-3}
       h4: ${h4:-4}
+      i1: "${i1:-""}"
+      i2: "${i2:-""}"
+      i3: "${i3:-""}"
+      i4: "${i4:-""}"
+      i5: "${i5:-""}"
+      j1: "${j1:-""}"
+      j2: "${j2:-""}"
+      j3: "${j3:-""}"
+      itime: ${itime:-"0"}
 EOF
 }
 
 generate_awg_yaml() {
-  local output_file="/root/.config/mihomo/awg.yaml"
-  echo "proxies:" > "$output_file"
-  find /root/.config/mihomo/awg -name "*.conf" | while read -r conf; do
-    parse_awg_config "$conf"
-  done >> "$output_file"
+  log "Generating $AWG_YAML"
+  echo "proxies:" > "$AWG_YAML"
+  if find "$AWG_DIR" -name "*.conf" | grep -q . 2>/dev/null; then
+    find "$AWG_DIR" -name "*.conf" | while read -r conf; do
+      parse_awg_config "$conf"
+    done >> "$AWG_YAML"
+  fi
 }
 
-proxies_file_mihomo() {
-  local output_file="/root/.config/mihomo/proxies.yaml"
-  echo "proxies:" > "$output_file"
-  for var in $(env | grep -E '^[A-Za-z0-9_-]+_OUT=' | sort -t '=' -k1); do
-    name=$(echo "$var" | cut -d '=' -f1 | sed 's/_OUT$//')
-    value=$(echo "$var" | cut -d '=' -f2-)
-    server=$(echo "$value" | cut -d ',' -f1)
-    port=$(echo "$value" | cut -d ',' -f2)
-    cat >> "$output_file" <<EOF
-  - name: "$name"
-    type: socks5
-    server: $server
-    port: $port
-    udp: true
-EOF
+# ------------------- LINKS -------------------
+
+link_file_mihomo() {
+  log "Generating $LINKS_YAML"
+  : > "$LINKS_YAML"
+  # LINKi содержат сырой YAML/текст ссылок
+  for i in $(env | grep -E '^LINK[0-9]*=' | sort -t '=' -k1 | cut -d '=' -f1); do
+    eval "echo \"\$$i\"" >> "$LINKS_YAML"
   done
 }
 
-config_file_mihomo() {
-  local providers=""
+# ------------------- CONFIG -------------------
 
-cat > /root/.config/mihomo/config.yaml <<EOF
+config_file_mihomo() {
+  log "Generating $CONFIG_YAML"
+  mkdir -p "$CONFIG_DIR"
+
+  cat > "$CONFIG_YAML" <<EOF
 log-level: ${LOG_LEVEL:-warning}
 external-controller: 0.0.0.0:9090
 external-ui: ui
 external-ui-url: "${EXTERNAL_UI_URL:-https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip}"
 unified-delay: true
 ipv6: false
-geodata-mode: true 
+geodata-mode: true
 dns:
   enable: true
   cache-algorithm: arc
@@ -127,11 +168,11 @@ listeners:
     stack: system
     auto-detect-interface: false
     include-interface:
-    - $(ip -o link show | awk -F': ' '/link\/ether/ {print $2}' | cut -d'@' -f1 | head -n1)
+      - $(first_iface)
     auto-route: true
     auto-redirect: true
     inet4-address:
-    - 198.19.0.1/30
+      - 198.19.0.1/30
   - name: mixed-in
     type: mixed
     port: 1080
@@ -141,177 +182,138 @@ listeners:
 proxy-providers:
 EOF
 
-# links provider
-if env | grep -qE '^LINK[0-9]*='; then
-cat >> /root/.config/mihomo/config.yaml <<EOF
-  links:
-    type: file
-    path: links.yaml
-    health-check:
-      enable: true
-      url: https://www.gstatic.com/generate_204
-      interval: ${INTERVAL:-120}
-      timeout: 5000
-      lazy: false
-      expected-status: 204
-EOF
-  providers="$providers links"
-fi
+  providers=""
 
-# awg provider
-if find /root/.config/mihomo/awg -name "*.conf" | grep -q .; then
-cat >> /root/.config/mihomo/config.yaml <<EOF
-  awg:
+  # провайдер links, если есть LINKi
+  if env | grep -qE '^LINK[0-9]*='; then
+    cat >> "$CONFIG_YAML" <<EOF
+  LINKS:
     type: file
-    path: awg.yaml
-    health-check:
-      enable: true
-      url: https://www.gstatic.com/generate_204
-      interval: ${INTERVAL:-120}
-      timeout: 5000
-      lazy: false
-      expected-status: 204
+    path: $(basename "$LINKS_YAML")
+$(health_check_block)
 EOF
-  providers="$providers awg"
-fi
+    providers="$providers LINKS"
+  fi
 
-# sub_link providers
-i=1
-for var in $(env | grep -E '^SUB_LINK[0-9]*=' | sort -t '=' -k1); do
-  value=$(echo "$var" | cut -d '=' -f2-)
-  subname="sub_link$i"
-  cat >> /root/.config/mihomo/config.yaml <<EOF
-  $subname:
+  # провайдеры SUB_LINKi — с ИМЕНАМИ КАК В ENV (например, SUB_LINK1)
+  for var in $(env | grep -E '^SUB_LINK[0-9]*=' | sort -t '=' -k1); do
+    name=$(echo "$var" | cut -d '=' -f1)     # SUB_LINK1
+    value=$(echo "$var" | cut -d '=' -f2-)   # URL
+    cat >> "$CONFIG_YAML" <<EOF
+  $name:
     url: "$value"
     type: http
     interval: 86400
     proxy: DIRECT
-    health-check:
-      enable: true
-      url: "https://www.gstatic.com/generate_204"
-      interval: ${INTERVAL:-120}
-      lazy: false
+$(health_check_block)
 EOF
-  providers="$providers $subname"
-  i=$((i + 1))
-done
-
-# proxies provider (_OUT)
-if env | grep -qE '^[A-Za-z0-9_-]+_OUT='; then
-cat >> /root/.config/mihomo/config.yaml <<EOF
-  proxies:
-    type: file
-    path: proxies.yaml
-    health-check:
-      enable: true
-      url: https://www.gstatic.com/generate_204
-      interval: ${INTERVAL:-120}
-      timeout: 5000
-      lazy: false
-      expected-status: 204
-EOF
-  providers="$providers proxies"
-fi
-
-cat >> /root/.config/mihomo/config.yaml <<EOF
-
-proxy-groups:
-  - name: GLOBAL
-    type: ${GLOBAL_TYPE:-select}
-    use:
-EOF
-
-# GLOBAL group
-if [ -n "$GLOBAL_USE" ]; then
-  echo "$GLOBAL_USE" | tr ',' '\n' | sed 's/^/      - /' >> /root/.config/mihomo/config.yaml
-else
-  for p in $providers; do
-    echo "      - $p" >> /root/.config/mihomo/config.yaml
+    providers="$providers $name"
   done
-fi
-[ -n "$GLOBAL_FILTER" ] && echo "    filter: $GLOBAL_FILTER" >> /root/.config/mihomo/config.yaml
-[ -n "$GLOBAL_EXCLUDE" ] && echo "    exclude-filter: $GLOBAL_EXCLUDE" >> /root/.config/mihomo/config.yaml
 
-# other groups
-if [ -n "$GROUP" ]; then
-  echo "$GROUP" | tr ',' '\n' | while read -r grp; do
-    grp_trim=$(echo "$grp" | xargs)
-    [ -z "$grp_trim" ] && continue
-    grp_env_name=$(echo "$grp_trim" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
-    grp_type=$(eval echo "\$${grp_env_name}_TYPE")
-    grp_filter=$(eval echo "\$${grp_env_name}_FILTER")
-    grp_exclude=$(eval echo "\$${grp_env_name}_EXCLUDE")
-    grp_use=$(eval echo "\$${grp_env_name}_USE")
-
-    cat >> /root/.config/mihomo/config.yaml <<EOF
-
-  - name: $grp_trim
-    type: ${grp_type:-select}
+  # провайдер AWG, если есть .conf
+  if find "$AWG_DIR" -name "*.conf" | grep -q . 2>/dev/null; then
+    cat >> "$CONFIG_YAML" <<EOF
+  AWG:
+    type: file
+    path: $(basename "$AWG_YAML")
+$(health_check_block)
 EOF
-    [ -n "$grp_filter" ] && echo "    filter: $grp_filter" >> /root/.config/mihomo/config.yaml
-    [ -n "$grp_exclude" ] && echo "    exclude-filter: $grp_exclude" >> /root/.config/mihomo/config.yaml
+    providers="$providers AWG"
+  fi
 
-    echo "    use:" >> /root/.config/mihomo/config.yaml
-    if [ -n "$grp_use" ]; then
-      echo "$grp_use" | tr ',' '\n' | sed 's/^/      - /' >> /root/.config/mihomo/config.yaml
+  # Группы
+  {
+    echo
+    echo "proxy-groups:"
+    echo "  - name: GLOBAL"
+    echo "    type: ${GLOBAL_TYPE:-select}"
+    echo "    use:"
+    if [ -n "${GLOBAL_USE:-}" ]; then
+      echo "$GLOBAL_USE" | tr ',' '\n' | sed 's/^/      - /'
     else
       for p in $providers; do
-        echo "      - $p" >> /root/.config/mihomo/config.yaml
+        echo "      - $p"
       done
     fi
-  done
-fi
+    [ -n "${GLOBAL_FILTER:-}" ] && echo "    filter: $GLOBAL_FILTER"
+    [ -n "${GLOBAL_EXCLUDE:-}" ] && echo "    exclude-filter: $GLOBAL_EXCLUDE"
 
-cat >> /root/.config/mihomo/config.yaml <<EOF
+    # дополнительные группы из GROUP (опционально)
+    if [ -n "${GROUP:-}" ]; then
+      echo "$GROUP" | tr ',' '\n' | while read -r grp; do
+        grp_trim=$(echo "$grp" | xargs)
+        [ -z "$grp_trim" ] && continue
+        grp_env_name=$(echo "$grp_trim" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
 
-  - name: quic
-    type: select
-    proxies:
-      - REJECT-DROP
-      - PASS
+        grp_type=$(printenv "${grp_env_name}_TYPE" || echo "select")
+        grp_filter=$(printenv "${grp_env_name}_FILTER" || true)
+        grp_exclude=$(printenv "${grp_env_name}_EXCLUDE" || true)
+        grp_use=$(printenv "${grp_env_name}_USE" || true)
 
-rules:
-  - AND,((NETWORK,udp),(DST-PORT,443)),quic
-EOF
+        echo
+        echo "  - name: $grp_trim"
+        echo "    type: $grp_type"
+        [ -n "$grp_filter" ] && echo "    filter: $grp_filter"
+        [ -n "$grp_exclude" ] && echo "    exclude-filter: $grp_exclude"
 
-if [ -n "$GROUP" ]; then
-  echo "$GROUP" | tr ',' '\n' | while read -r grp; do
-    grp_trim=$(echo "$grp" | xargs)
-    [ -z "$grp_trim" ] && continue
-    # GEOSITE правило
-    echo "  - GEOSITE,$grp_trim,$grp_trim" >> /root/.config/mihomo/config.yaml
-    # GEOIP правило (если определено <GROUPNAME>_GEOIP)
-    grp_env_name=$(echo "$grp_trim" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
-    geoip_val=$(eval echo "\$${grp_env_name}_GEOIP")
-    if [ -n "$geoip_val" ]; then
-      echo "  - GEOIP,$geoip_val,$grp_trim" >> /root/.config/mihomo/config.yaml
+        echo "    use:"
+        if [ -n "$grp_use" ]; then
+          echo "$grp_use" | tr ',' '\n' | sed 's/^/      - /'
+        else
+          for p in $providers; do
+            echo "      - $p"
+          done
+        fi
+      done
     fi
-  done
-fi
 
-cat >> /root/.config/mihomo/config.yaml <<EOF
-  - MATCH,GLOBAL
-EOF
+    echo
+    echo "  - name: quic"
+    echo "    type: select"
+    echo "    proxies:"
+    echo "      - REJECT-DROP"
+    echo "      - PASS"
+
+    echo
+    echo "rules:"
+    echo "  - AND,((NETWORK,udp),(DST-PORT,443)),quic"
+
+    # правила для групп: GEOSITE и опциональный GEOIP
+    if [ -n "${GROUP:-}" ]; then
+      echo "$GROUP" | tr ',' '\n' | while read -r grp; do
+        grp_trim=$(echo "$grp" | xargs)
+        [ -z "$grp_trim" ] && continue
+        echo "  - GEOSITE,$grp_trim,$grp_trim"
+        grp_env_name=$(echo "$grp_trim" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
+        grp_geoip=$(printenv "${grp_env_name}_GEOIP" || true)
+        [ -n "$grp_geoip" ] && echo "  - GEOIP,$grp_geoip,$grp_trim"
+      done
+    fi
+
+    echo "  - MATCH,GLOBAL"
+  } >> "$CONFIG_YAML"
 }
 
-link_file_mihomo() {
-  if ! env | grep -qE '^LINK[0-9]*=' && ! env | grep -qE '^SUB_LINK[0-9]*=' && ! find /root/.config/mihomo/awg -name "*.conf" | grep -q . && ! env | grep -qE '^[A-Za-z0-9_-]+_OUT='; then
-    echo "No LINK, SUB_LINK, .conf or *_OUT file found."
-    exit 1
-  fi
-  > /root/.config/mihomo/links.yaml
-  for i in $(env | grep -E '^LINK[0-9]*=' | sort -t '=' -k1 | cut -d '=' -f1); do
-    eval "echo \"\$$i\"" >> /root/.config/mihomo/links.yaml
-  done
-}
+# ------------------- Orchestrator -------------------
 
 run() {
-  mkdir -p /root/.config/mihomo
+  mkdir -p "$CONFIG_DIR" "$AWG_DIR"
+
   generate_awg_yaml
-  proxies_file_mihomo
   link_file_mihomo
   config_file_mihomo
+
+  log "Starting mihomo..."
   exec ./mihomo
 }
+
+# ------------------- Entry -------------------
+
+# Если совсем нет источников — предупредим (но не падаем, чтобы можно было подняться хотя бы с пустым конфигом)
+if ! env | grep -qE '^LINK[0-9]*=' \
+   && ! env | grep -qE '^SUB_LINK[0-9]*=' \
+   && ! find "$AWG_DIR" -name "*.conf" | grep -q . 2>/dev/null; then
+  log "Warning: no LINK*, SUB_LINK*, or AWG .conf found. Config will be minimal."
+fi
 
 run || exit 1
