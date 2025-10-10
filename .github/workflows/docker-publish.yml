@@ -70,6 +70,24 @@ jobs:
             vanes32/mihomo_env:latest
             vanes32/mihomo_env:${{ steps.mihomo_env_version.outputs.VERSION }}
 
+      # --- Build mihomo_env_tproxy ---
+      - name: Read version for mihomo_env_tproxy
+        id: mihomo_env_tproxy_version
+        run: echo "VERSION=$(cat ./mihomo_env_tproxy/VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Build and push mihomo_env_tproxy
+        uses: docker/build-push-action@v4
+        with:
+          context: ./mihomo_env_tproxy
+          file: ./mihomo_env_tproxy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/vanes32/mihomo/mihomo_env_tproxy:latest
+            ghcr.io/vanes32/mihomo/mihomo_env_tproxy:${{ steps.mihomo_env_tproxy_version.outputs.VERSION }}
+            vanes32/mihomo_env_tproxy:latest
+            vanes32/mihomo_env_tproxy:${{ steps.mihomo_env_tproxy_version.outputs.VERSION }}
+
       # # --- Cleanup old versions for mihomo ---
       # - name: Cleanup old GHCR versions (mihomo)
       #   uses: actions/delete-package-versions@v4
