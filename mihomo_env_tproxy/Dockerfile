@@ -5,9 +5,9 @@ ARG TARGETARCH
 # Скачиваем бинарник прямо через wget из busybox
 RUN mkdir /out && \
     if [ "$TARGETARCH" = "arm64" ]; then \
-        wget -O /out/mihomo.gz https://github.com/MetaCubeX/mihomo/releases/download/v1.19.14/mihomo-linux-arm64-v1.19.14.gz; \
+        wget -O /out/mihomo.gz https://github.com/MetaCubeX/mihomo/releases/download/v1.19.15/mihomo-linux-arm64-v1.19.15.gz; \
     elif [ "$TARGETARCH" = "amd64" ]; then \
-        wget -O /out/mihomo.gz https://github.com/MetaCubeX/mihomo/releases/download/v1.19.14/mihomo-linux-amd64-compatible-v1.19.14.gz; \
+        wget -O /out/mihomo.gz https://github.com/MetaCubeX/mihomo/releases/download/v1.19.15/mihomo-linux-amd64-compatible-v1.19.15.gz; \
     else \
         echo "Unsupported architecture: $TARGETARCH" && exit 1; \
     fi && \
