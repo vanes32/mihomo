@@ -287,12 +287,18 @@ EOF
 
 run() {
 nft flush ruleset
-nft -f - <<EOF
-table inet mihomo_tp {
-    chain incoming {
+nft -f - <<'EOF'
+table inet mihomo_tproxy {
+    chain prerouting {
+        type filter hook prerouting priority filter; policy accept;
+        ip daddr 198.18.0.0/15 meta l4proto { tcp, udp } meta mark set 0x00000001 tproxy ip to 127.0.0.1:12345 accept
+        ip daddr { 0.0.0.0/8, 127.0.0.0/8, 224.0.0.0/4, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 192.0.0.0/24, 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24, 192.88.99.0/24, 198.18.0.0/15, 224.0.0.0/3 } return
+        meta l4proto { tcp, udp } meta mark set 0x00000001 tproxy ip to 127.0.0.1:12345 accept
+    }
+
+    chain divert {
         type filter hook prerouting priority mangle; policy accept;
-        ip daddr { $(ip -4 addr show $(ip -o link show | awk -F': ' '/link\/ether/ {print $2}' | cut -d'@' -f1 | head -n1) | grep inet | awk '{ print $2 }' | cut -d/ -f1) , 127.0.0.0/8 } return
-        meta l4proto { tcp, udp } tproxy ip to 127.0.0.1:12345 mark set 1
+        meta l4proto tcp socket transparent 1 meta mark set 0x00000001 accept
     }
 }
 EOF
