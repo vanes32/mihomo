@@ -49,11 +49,6 @@ jobs:
               echo "Error: gh api timed out on page $page"
               exit 1
             fi
-            # Проверяем, не ошибка ли в ответе
-            if [[ "$chunk" != "[]" && $(echo "$chunk" | jq 'type') != "array" ]]; then
-              echo "Error response on page $page: $chunk"
-              exit 1
-            fi
             echo "Page $page raw chunk: ${chunk:0:50}..."
             chunk_count=$(echo "$chunk" | jq length)
             echo "Page $page: $chunk_count versions"
@@ -118,14 +113,12 @@ jobs:
 
           echo "=== 🧩 Untagged images ==="
           untagged_ids=()
-          # Извлекаем закодированные ID для untagged версий
           for id in $(echo "$packages_json" | jq -r '.[] | select(.metadata.container.tags | length == 0) | .id'); do
             untagged_ids+=("$id")
           done
           safe_untagged_ids=()
 
           for id in "${untagged_ids[@]}"; do
-            # Получаем данные версии по закодированному ID
             data=$(timeout 10s gh api -H "Accept: application/vnd.github+json" \
               /users/${PACKAGE_OWNER}/packages/container/${PACKAGE_NAME_ENCODED}/versions/$id || echo "{}")
             digest=$(echo "$data" | jq -r '.name // "unknown"')
@@ -145,7 +138,6 @@ jobs:
 
           echo ""
           echo "Safe untagged IDs (before validation): ${safe_untagged_ids[*]}"
-          # Проверяем существование каждой версии
           validated_ids=()
           for id in "${safe_untagged_ids[@]}"; do
             if gh api -H "Accept: application/vnd.github+json" \
@@ -159,7 +151,6 @@ jobs:
 
           echo ""
           echo "Validated untagged IDs: ${validated_ids[*]}"
-          # Преобразуем в строку с запятыми и пробелами (как в документации)
           if [ ${#validated_ids[@]} -eq 0 ]; then
             echo "No valid untagged IDs to delete"
             echo "safe_untagged_ids_comma=" >> $GITHUB_OUTPUT
