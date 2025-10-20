@@ -1,0 +1,45 @@
+name: Build and publish multi-arch Docker images ROS
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # --- Login to GHCR ---
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Build mihomo_env_ros ---
+      - name: Read version for mihomo_env_ros
+        id: mihomo_env_ros_version
+        run: echo "VERSION=$(cat ./mihomo_env_ros/VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Build and push mihomo_env_ros
+        uses: docker/build-push-action@v4
+        with:
+          context: ./mihomo_env_ros
+          file: ./mihomo_env_ros/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/vanes32/mihomo/mihomo_env_ros:latest
+            ghcr.io/vanes32/mihomo/mihomo_env_ros:${{ steps.mihomo_env_ros_version.outputs.VERSION }}

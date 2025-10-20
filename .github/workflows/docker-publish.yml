@@ -1,8 +1,9 @@
 name: Build and publish multi-arch Docker images
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
 
 jobs:
   build-and-push:
