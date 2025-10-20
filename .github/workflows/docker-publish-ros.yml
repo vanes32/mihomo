@@ -17,24 +17,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Docker Buildx manually
-        run: |
-          # Устанавливаем зависимости
-          sudo apt-get update -y
-          sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-
-          # Проверим, есть ли buildx (в новых версиях Docker он уже встроен)
-          docker buildx version || {
-            echo "Installing Docker Buildx..."
-            BUILDX_VERSION=$(curl -s https://api.github.com/repos/docker/buildx/releases/latest | grep tag_name | cut -d '"' -f 4)
-            mkdir -p ~/.docker/cli-plugins/
-            curl -SL "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-amd64" -o ~/.docker/cli-plugins/docker-buildx
-            chmod +x ~/.docker/cli-plugins/docker-buildx
-          }
-
-          # Активируем buildx
-          docker buildx create --use --name mybuilder
-          docker buildx inspect --bootstrap
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       # --- Login to GHCR ---
       - name: Login to GitHub Container Registry
