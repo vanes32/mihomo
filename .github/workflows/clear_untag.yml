@@ -15,7 +15,7 @@ jobs:
       PACKAGE_OWNER: vanes32
       PACKAGE_NAME: mihomo/mihomo_env_ros # Имя пакета с / для action
       PACKAGE_NAME_ENCODED: mihomo%2Fmihomo_env_ros # Экранированное имя для API
-      DELETE_UNTAGGED: "false" # "true" для удаления, "false" для dry-run
+      DELETE_UNTAGGED: "true" # "true" для удаления, "false" для dry-run
 
     steps:
       - name: Checkout
