@@ -180,6 +180,18 @@ hosts:
   dns.quad9.net: [9.9.9.9, 149.112.112.112]
 
 listeners:
+EOF
+
+  if [ "${TPROXY:-0}" = "1" ]; then
+    cat >> "$CONFIG_YAML" <<EOF
+  - name: tproxy-in
+    type: tproxy
+    port: 12345
+    listen: 0.0.0.0
+    udp: true
+EOF
+  else
+    cat >> "$CONFIG_YAML" <<EOF
   - name: tun-in
     type: tun
     stack: system
@@ -190,6 +202,10 @@ listeners:
     auto-redirect: true
     inet4-address:
       - 198.19.0.1/30
+EOF
+  fi
+
+  cat >> "$CONFIG_YAML" <<EOF
   - name: mixed-in
     type: mixed
     port: 1080
