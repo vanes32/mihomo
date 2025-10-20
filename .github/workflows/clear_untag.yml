@@ -13,7 +13,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Для gh api
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Замени на ${{ secrets.PACKAGE_TOKEN }} для PAT
       PACKAGE_OWNER: vanes32
-      PACKAGE_NAME: mihomo_env_ros # Только имя пакета, без "mihomo/"
+      PACKAGE_NAME: mihomo # Только имя пакета, без "mihomo/"
       DELETE_UNTAGGED: "false" # "true" для удаления, "false" для dry-run
 
     steps:
